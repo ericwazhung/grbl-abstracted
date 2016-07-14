@@ -21,23 +21,34 @@
 
 #include "grbl.h"
 
+#include CONCAT_HEADER(spindle_control_,__MCU_ARCH__)
+
 
 void spindle_init()
 {    
   // Configure variable spindle PWM and enable pin, if requried. On the Uno, PWM and enable are
   // combined unless configured otherwise.
   #ifdef VARIABLE_SPINDLE
-    SPINDLE_PWM_DDR |= (1<<SPINDLE_PWM_BIT); // Configure as PWM output pin.
+    //SPINDLE_PWM_DDR |= (1<<SPINDLE_PWM_BIT); // Configure as PWM output pin.
+    configurePORToutput(SPINDLE_PWM_PORT, SPINDLE_PWM_BIT);
+#ifndef __IGNORE_MEH_ERRORS__
+    #error "is configuring a PWM pin as a digital-output common across all architectures...? Or at least non-invasive?"
+
+    #error "Herein lie some funky #ifs that might need some architecture-specific-handling"
+#endif
     #if defined(CPU_MAP_ATMEGA2560) || defined(USE_SPINDLE_DIR_AS_ENABLE_PIN)
-      SPINDLE_ENABLE_DDR |= (1<<SPINDLE_ENABLE_BIT); // Configure as output pin.
+      //SPINDLE_ENABLE_DDR |= (1<<SPINDLE_ENABLE_BIT); // Configure as output pin.
+      configurePORToutput(SPINDLE_ENABLE_PORT, SPINDLE_ENABLE_BIT);
     #endif     
   // Configure no variable spindle and only enable pin.
   #else  
-    SPINDLE_ENABLE_DDR |= (1<<SPINDLE_ENABLE_BIT); // Configure as output pin.
+    //SPINDLE_ENABLE_DDR |= (1<<SPINDLE_ENABLE_BIT); // Configure as output pin.
+    configurePORToutput(SPINDLE_ENABLE_PORT, SPINDLE_ENABLE_BIT);
   #endif
   
   #ifndef USE_SPINDLE_DIR_AS_ENABLE_PIN
-    SPINDLE_DIRECTION_DDR |= (1<<SPINDLE_DIRECTION_BIT); // Configure as output pin.
+    //SPINDLE_DIRECTION_DDR |= (1<<SPINDLE_DIRECTION_BIT); // Configure as output pin.
+    configurePORToutput(SPINDLE_DIRECTION_PORT, SPINDLE_DIRECTION_BIT);
   #endif
   spindle_stop();
 }
@@ -47,19 +58,37 @@ void spindle_stop()
 {
   // On the Uno, spindle enable and PWM are shared. Other CPUs have seperate enable pin.
   #ifdef VARIABLE_SPINDLE
-    TCCRA_REGISTER &= ~(1<<COMB_BIT); // Disable PWM. Output voltage is zero.
+    
+   //TCCRA_REGISTER &= ~(1<<COMB_BIT); // Disable PWM. Output voltage is zero.
+   //"Why not just set the OCR-value to zero?"
+   // As an outsider looking in, my guess is (from experience):
+   // Some AVRs would still spike for one timer-count from 0x00 -> 0x01
+   // It's definitely dependent on the MCU, and usually not-well-documented
+   // BUT NOTE: as-originally-implemented, the PWM_BIT is only enabled as
+   // an output, but *not* set zero. So, we're relying on the boot-values.
+   Spindle_disablePWMandOutputZero();
+
+
     #if defined(CPU_MAP_ATMEGA2560) || defined(USE_SPINDLE_DIR_AS_ENABLE_PIN)
       #ifdef INVERT_SPINDLE_ENABLE_PIN
-        SPINDLE_ENABLE_PORT |= (1<<SPINDLE_ENABLE_BIT);  // Set pin to high
+        //SPINDLE_ENABLE_PORT |= (1<<SPINDLE_ENABLE_BIT);  
+        // Set pin to high
+        setPORTpin(SPINDLE_ENABLE_PORT, SPINDLE_ENABLE_BIT);
       #else
-        SPINDLE_ENABLE_PORT &= ~(1<<SPINDLE_ENABLE_BIT); // Set pin to low
+        //SPINDLE_ENABLE_PORT &= ~(1<<SPINDLE_ENABLE_BIT); 
+        // Set pin to low
+        clrPORTpin(SPINDLE_ENABLE_PORT, SPINDLE_ENABLE_BIT);
       #endif
     #endif
   #else
     #ifdef INVERT_SPINDLE_ENABLE_PIN
-      SPINDLE_ENABLE_PORT |= (1<<SPINDLE_ENABLE_BIT);  // Set pin to high
+      //SPINDLE_ENABLE_PORT |= (1<<SPINDLE_ENABLE_BIT);  
+      // Set pin to high
+      setPORTpin(SPINDLE_ENABLE_PORT, SPINDLE_ENABLE_BIT);
     #else
-      SPINDLE_ENABLE_PORT &= ~(1<<SPINDLE_ENABLE_BIT); // Set pin to low
+      //SPINDLE_ENABLE_PORT &= ~(1<<SPINDLE_ENABLE_BIT); 
+      // Set pin to low
+      clrPORTpin(SPINDLE_ENABLE_PORT, SPINDLE_ENABLE_BIT);
     #endif
   #endif  
 }
@@ -76,24 +105,23 @@ void spindle_set_state(uint8_t state, float rpm)
 
     #ifndef USE_SPINDLE_DIR_AS_ENABLE_PIN
       if (state == SPINDLE_ENABLE_CW) {
-        SPINDLE_DIRECTION_PORT &= ~(1<<SPINDLE_DIRECTION_BIT);
+        //SPINDLE_DIRECTION_PORT &= ~(1<<SPINDLE_DIRECTION_BIT);
+        clearPORTpin(SPINDLE_DIRECTION_PORT, SPINDLE_DIRECTION_BIT);
       } else {
-        SPINDLE_DIRECTION_PORT |= (1<<SPINDLE_DIRECTION_BIT);
+        //SPINDLE_DIRECTION_PORT |= (1<<SPINDLE_DIRECTION_BIT);
+        setPORTpin(SPINDLE_DIRECTION_PORT, SPINDLE_DIRECTION_BIT);
       }
     #endif
 
     #ifdef VARIABLE_SPINDLE
       // TODO: Install the optional capability for frequency-based output for servos.
-      #ifdef CPU_MAP_ATMEGA2560
-      	TCCRA_REGISTER = (1<<COMB_BIT) | (1<<WAVE1_REGISTER) | (1<<WAVE0_REGISTER);
-        TCCRB_REGISTER = (TCCRB_REGISTER & 0b11111000) | 0x02 | (1<<WAVE2_REGISTER) | (1<<WAVE3_REGISTER); // set to 1/8 Prescaler
-        OCR4A = 0xFFFF; // set the top 16bit value
-        uint16_t current_pwm;
-      #else
-        TCCRA_REGISTER = (1<<COMB_BIT) | (1<<WAVE1_REGISTER) | (1<<WAVE0_REGISTER);
-        TCCRB_REGISTER = (TCCRB_REGISTER & 0b11111000) | 0x02; // set to 1/8 Prescaler
-        uint8_t current_pwm;
-      #endif
+
+      Spindle_enablePWM();
+      
+      //current_pwm may be either 16bit or 8bit depending on the available
+      //timer-counter
+      Spindle_PWM_t  current_pwm;
+
 
       if (rpm <= 0.0) { spindle_stop(); } // RPM should never be negative, but check anyway.
       else {
@@ -107,14 +135,22 @@ void spindle_set_state(uint8_t state, float rpm)
         #ifdef MINIMUM_SPINDLE_PWM
           if (current_pwm < MINIMUM_SPINDLE_PWM) { current_pwm = MINIMUM_SPINDLE_PWM; }
         #endif
-        OCR_REGISTER = current_pwm; // Set PWM pin output
-    
+  
+        // Set PWM pin output
+        Spindle_setOutputCompareValue( current_pwm );
+
+
+#ifndef __IGNORE_MEH_ERRORS__  
+#error "This'd probably be a lot cleaner if we macroized the process specifically for INVERT_SPINDLE_ENABLE_PIN..."
+#endif
         // On the Uno, spindle enable and PWM are shared, unless otherwise specified.
         #if defined(CPU_MAP_ATMEGA2560) || defined(USE_SPINDLE_DIR_AS_ENABLE_PIN) 
           #ifdef INVERT_SPINDLE_ENABLE_PIN
-            SPINDLE_ENABLE_PORT &= ~(1<<SPINDLE_ENABLE_BIT);
+            //SPINDLE_ENABLE_PORT &= ~(1<<SPINDLE_ENABLE_BIT);
+            clearPORTpin(SPINDLE_ENABLE_PORT, SPINDLE_ENABLE_BIT);
           #else
-            SPINDLE_ENABLE_PORT |= (1<<SPINDLE_ENABLE_BIT);
+            //SPINDLE_ENABLE_PORT |= (1<<SPINDLE_ENABLE_BIT);
+            setPORTpin(SPINDLE_ENABLE_PORT, SPINDLE_ENABLE_BIT);
           #endif
         #endif
       }
@@ -123,9 +159,11 @@ void spindle_set_state(uint8_t state, float rpm)
       // NOTE: Without variable spindle, the enable bit should just turn on or off, regardless
       // if the spindle speed value is zero, as its ignored anyhow.      
       #ifdef INVERT_SPINDLE_ENABLE_PIN
-        SPINDLE_ENABLE_PORT &= ~(1<<SPINDLE_ENABLE_BIT);
+        //SPINDLE_ENABLE_PORT &= ~(1<<SPINDLE_ENABLE_BIT);
+        clearPORTpin(SPINDLE_ENABLE_PORT, SPINDLE_ENABLE_BIT);
       #else
-        SPINDLE_ENABLE_PORT |= (1<<SPINDLE_ENABLE_BIT);
+        //SPINDLE_ENABLE_PORT |= (1<<SPINDLE_ENABLE_BIT);
+        setPORTpin(SPINDLE_ENABLE_PORT, SPINDLE_ENABLE_BIT);
       #endif
     #endif
 

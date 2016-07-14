@@ -23,6 +23,9 @@
 
 #include "grbl.h"
 
+//Essentially: e.g. '#include "system_avr.h"'
+#include CONCAT_HEADER(system_,__MCU_ARCH__)
+
 // Define system executor bit map. Used internally by realtime protocol as realtime command flags, 
 // which notifies the main program to execute the specified realtime command asynchronously.
 // NOTE: The system executor uses an unsigned 8-bit volatile variable (8 flag limit.) The default
@@ -79,8 +82,9 @@ typedef struct {
 
   int32_t probe_position[N_AXIS]; // Last probe position in machine coordinates and steps.
   uint8_t probe_succeeded;        // Tracks if last probing cycle was successful.
-  uint8_t homing_axis_lock;       // Locks axes when limits engage. Used as an axis motion mask in the stepper ISR.
+  gpioPortWidth_t homing_axis_lock;       // Locks axes when limits engage. Used as an axis motion mask in the stepper ISR.
 } system_t;
+
 extern system_t sys;
 
 volatile uint8_t sys_probe_state;   // Probing state value.  Used to coordinate the probing cycle with stepper ISR.

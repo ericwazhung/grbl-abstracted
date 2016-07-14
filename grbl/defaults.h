@@ -88,4 +88,9 @@
   #include "defaults/defaults_simulator.h"
 #endif
 
+#ifdef DEFAULTS_ESOT
+  // Settings only for Esot.Eric's experimental setup...
+  #include "defaults/defaults_esot.h"
+#endif
+
 #endif

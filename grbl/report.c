@@ -502,8 +502,14 @@ void report_realtime_status()
   }
   
   #ifdef REPORT_CONTROL_PIN_STATE 
+   #ifndef __AVR_ARCH__
+    #error "REPORT_CONTROL_PIN_STATE has not been updated for architectures other than AVR. Especially: those that have port-widths greater than 8-bits. If your control-pins are *all* within the first 8-bits of a port, it should work. But otherwise, this needs fixin"
+   #endif
     printPgmString(PSTR(",Ctl:"));
-    print_uint8_base2(CONTROL_PIN & CONTROL_MASK);
+    //print_uint8_base2(CONTROL_PIN & CONTROL_MASK);
+    //This ONLY works with control-bits which are within the first 8bits on
+    //a port.
+    print_uint8_base2(readio(CONTROL_PORT) & CONTROL_MASK);
   #endif
   
   printPgmString(PSTR(">\r\n"));

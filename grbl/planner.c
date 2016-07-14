@@ -275,8 +275,8 @@ uint8_t plan_check_full_buffer()
   float unit_vec[N_AXIS], delta_mm;
   uint8_t idx;
   #ifdef COREXY
-    target_steps[A_MOTOR] = lround(target[A_MOTOR]*settings.steps_per_mm[A_MOTOR]);
-    target_steps[B_MOTOR] = lround(target[B_MOTOR]*settings.steps_per_mm[B_MOTOR]);
+    target_steps[A_MOTOR] = g_lround(target[A_MOTOR]*settings.steps_per_mm[A_MOTOR]);
+    target_steps[B_MOTOR] = g_lround(target[B_MOTOR]*settings.steps_per_mm[B_MOTOR]);
     block->steps[A_MOTOR] = labs((target_steps[X_AXIS]-pl.position[X_AXIS]) + (target_steps[Y_AXIS]-pl.position[Y_AXIS]));
     block->steps[B_MOTOR] = labs((target_steps[X_AXIS]-pl.position[X_AXIS]) - (target_steps[Y_AXIS]-pl.position[Y_AXIS]));
   #endif
@@ -287,7 +287,7 @@ uint8_t plan_check_full_buffer()
     // NOTE: Computes true distance from converted step values.
     #ifdef COREXY
       if ( !(idx == A_MOTOR) && !(idx == B_MOTOR) ) {
-        target_steps[idx] = lround(target[idx]*settings.steps_per_mm[idx]);
+        target_steps[idx] = g_lround(target[idx]*settings.steps_per_mm[idx]);
         block->steps[idx] = labs(target_steps[idx]-pl.position[idx]);
       }
       block->step_event_count = max(block->step_event_count, block->steps[idx]);
@@ -299,7 +299,7 @@ uint8_t plan_check_full_buffer()
         delta_mm = (target_steps[idx] - pl.position[idx])/settings.steps_per_mm[idx];
       }
     #else
-      target_steps[idx] = lround(target[idx]*settings.steps_per_mm[idx]);
+      target_steps[idx] = g_lround(target[idx]*settings.steps_per_mm[idx]);
       block->steps[idx] = labs(target_steps[idx]-pl.position[idx]);
       block->step_event_count = max(block->step_event_count, block->steps[idx]);
       delta_mm = (target_steps[idx] - pl.position[idx])/settings.steps_per_mm[idx];

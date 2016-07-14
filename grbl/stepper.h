@@ -22,6 +22,11 @@
 #ifndef stepper_h
 #define stepper_h 
 
+//Essentially: #include "stepper_avr.h" or "stepper_pic32.h", as appropriate
+#include CONCAT_HEADER(stepper_,__MCU_ARCH__)
+
+
+
 #ifndef SEGMENT_BUFFER_SIZE
   #define SEGMENT_BUFFER_SIZE 6
 #endif
@@ -51,5 +56,23 @@ void st_update_plan_block_parameters();
 #ifdef REPORT_REALTIME_RATE
 float st_get_realtime_rate();
 #endif
+
+
+
+#if (STEPPER_INTERFACE == STEPPER_INTERFACE__PHASE_AB_PWM)
+ #ifdef STEP_PULSE_DELAY
+  #error "STEP_PULSE_DELAY can't be used with PHASE_AB"
+ #endif
+
+
+void Stepper_setPWMfromPhase(uint8_t axis, uint8_t stepperPhase);
+
+//This needs to be defined in stepper_<arch>.c
+void Stepper_initPWM(void);
+
+
+#endif
+
+
 
 #endif

@@ -22,6 +22,7 @@
 #include "grbl.h"
 
 
+
 #define MAX_INT_DIGITS 8 // Maximum number of digits in int32 (and float)
 
 
@@ -107,36 +108,14 @@ uint8_t read_float(char *line, uint8_t *char_counter, float *float_ptr)
   return(true);
 }
 
+#ifdef __BYTE_IDENTICAL_TEST__
+//Only for Byte-Identical testing with the original atmega328p compilation
+//of the original grbl-master...
+//If not Byte-Identical testing, it will compile as its own SOURCE entry in
+//the makefile
+#include "nuts_bolts_avr.c"
+#endif
 
-// Delays variable defined milliseconds. Compiler compatibility fix for _delay_ms(),
-// which only accepts constants in future compiler releases.
-void delay_ms(uint16_t ms) 
-{
-  while ( ms-- ) { _delay_ms(1); }
-}
-
-
-// Delays variable defined microseconds. Compiler compatibility fix for _delay_us(),
-// which only accepts constants in future compiler releases. Written to perform more 
-// efficiently with larger delays, as the counter adds parasitic time in each iteration.
-void delay_us(uint32_t us) 
-{
-  while (us) {
-    if (us < 10) { 
-      _delay_us(1);
-      us--;
-    } else if (us < 100) {
-      _delay_us(10);
-      us -= 10;
-    } else if (us < 1000) {
-      _delay_us(100);
-      us -= 100;
-    } else {
-      _delay_ms(1);
-      us -= 1000;
-    }
-  }
-}
 
 
 // Simple hypotenuse computation function.

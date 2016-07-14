@@ -22,6 +22,10 @@
 #ifndef limits_h
 #define limits_h 
 
+//Essentially e.g. '#include "limits_avr.h"'
+#include CONCAT_HEADER(limits_,__MCU_ARCH__)
+
+
 
 // Initialize the limits module
 void limits_init();

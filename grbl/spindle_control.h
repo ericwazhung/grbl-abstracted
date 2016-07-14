@@ -22,6 +22,7 @@
 #ifndef spindle_control_h
 #define spindle_control_h 
 
+#include CONCAT_HEADER(spindle_control_,__MCU_ARCH__)
 
 // Initializes spindle pins and hardware PWM, if enabled.
 void spindle_init();

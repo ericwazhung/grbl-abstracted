@@ -22,6 +22,64 @@
 #ifndef nuts_bolts_h
 #define nuts_bolts_h
 
+
+#include CONCAT_HEADER(nuts_bolts_,__MCU_ARCH__)
+
+
+#ifndef __IGNORE_MEH_ERRORS__
+#error "THIS NEEDS TO BE CHANGED"
+#endif
+
+
+
+#ifdef __XC32__
+ //No joke, PIC32's xc32-gcc doesn't seem to have these functions...
+ //see nuts_bolts_pic32.c for their definitions...
+
+ //These are per 'man trunc' as returned by the Linux Programmer's Manual
+ // 'If x is integral, +0, -0, NaN,  or infinite, x itself is returned.'
+
+ //round x to the nearest integer not larger in absolute value
+ //double trunc(double x);
+ int32_t g_trunc(float x);
+
+ //round x to the nearest integer (halfway cases away from zero)
+ //  round(0.5) -> 1.0    round(-0.5) -> -1.0
+ //double round(double x);
+ uint16_t g_round(float x);
+
+ //round x to the nearest integer value, away from zero
+ //long int lround(double x);
+ int32_t g_lround(float x);
+
+#else
+ //Because of that, I suppose, I'm looking into how these functions are
+ //used, so as to see how they can be implemented...
+ //And renaming them, as they're implemented less-fully than the originals
+
+ #define g_trunc   trunc
+ #define g_round   round
+ #define g_lround  lround
+#endif
+
+
+
+
+
+#ifndef __AVR_ARCH__
+ //AVR's _delay_ms() function is used directly only by mc_dwell
+ // Not sure why they didn't use the local delay_ms() (without the '_'
+ // prefix) except, maybe, that it is more accurate, since it uses a
+ // constant value as an input to an inline function
+ // Can't imagine it needs to be *so* precise, so on other (especially
+ // faster) architectures, it should be acceptable to use the local
+ // delay_ms instead.
+ #define _delay_ms delay_ms
+#endif
+
+
+
+
 #define false 0
 #define true 1
 
@@ -42,7 +100,19 @@
 // Conversions
 #define MM_PER_INCH (25.40)
 #define INCH_PER_MM (0.0393701)
-#define TICKS_PER_MICROSECOND (F_CPU/1000000)
+
+
+//This used to be TICKS_PER_MICROSECOND
+//But some architectures are treated differently so see nuts_bolts_<arch>.h
+//regarding TIMER_CLOCK_TICKS_PER_MICROSECOND
+//THIS IS UGLAY... Problem is, it's used with some big-ol-math that is
+//*right near* the maximum of its type... Found by multiplying F_CPU by 3
+// (PIC32), causes an overflow-warning (which is only visible because of a
+// lot of *constant* math). Hmm...
+#define CPU_TICKS_PER_MICROSECOND (F_CPU/1000000)
+
+ 
+
 
 // Useful macros
 #define clear_vector(a) memset(a, 0, sizeof(a))
@@ -53,9 +123,56 @@
 
 // Bit field and masking macros
 #define bit(n) (1 << n) 
+
+
+#ifdef __ORIGINAL_BIT_ATOMICS__
+
+//Personally, I find these names confusing...
+// is it a test or is it an assignment?
+// setbit_atomic()
+// clearbit_atomic()
+// bit_is_true_atomic()... but maybe I'm just being pedantic.
+//Handy routines, though!
 #define bit_true_atomic(x,mask) {uint8_t sreg = SREG; cli(); (x) |= (mask); SREG = sreg; }
+
+
 #define bit_false_atomic(x,mask) {uint8_t sreg = SREG; cli(); (x) &= ~(mask); SREG = sreg; }
+
+
 #define bit_toggle_atomic(x,mask) {uint8_t sreg = SREG; cli(); (x) ^= (mask); SREG = sreg; }
+
+#else
+
+//Huh, hadn't considered that there's really no reason to mask the bits and
+//use sei() at the end... Tremendous savings! Thanks for the idea, yo!
+//Unfortunately, these operations are architecture-specific, so see
+//CLI_SAFE and SEI_RESTORE in port_handling_<mcu>.h
+#define bit_true_atomic(x,mask) \
+{  \
+   uint8_t CLI_SAFE(sreg); \
+   (x) |= (mask); \
+   SEI_RESTORE(sreg); \
+}
+
+
+#define bit_false_atomic(x,mask) \
+{ \
+   uint8_t CLI_SAFE(sreg); \
+   (x) &= ~(mask); \
+   SEI_RESTORE(sreg); \
+}
+
+
+#define bit_toggle_atomic(x,mask) \
+{ \
+   uint8_t CLI_SAFE(sreg); \
+   (x) ^= (mask); \
+   SEI_RESTORE(sreg); \
+}  
+
+#endif
+
+
 #define bit_true(x,mask) (x) |= (mask)
 #define bit_false(x,mask) (x) &= ~(mask)
 #define bit_istrue(x,mask) ((x & mask) != 0)

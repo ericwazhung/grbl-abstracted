@@ -23,14 +23,22 @@
 
 void system_init() 
 {
-  CONTROL_DDR &= ~(CONTROL_MASK); // Configure as input pins
+  //CONTROL_DDR &= ~(CONTROL_MASK); // Configure as input pins
+  configurePORTinputs_masked(CONTROL_PORT, CONTROL_MASK);
   #ifdef DISABLE_CONTROL_PIN_PULL_UP
-    CONTROL_PORT &= ~(CONTROL_MASK); // Normal low operation. Requires external pull-down.
+    //CONTROL_PORT &= ~(CONTROL_MASK); 
+    // Normal-low/Active-High operation. Requires external pull-down.
+    //NOTE: Some architectures have enableable internal pull-down
+    //resistors. This is NYI. so externals are needed.
+    disablePORTpullups_masked(CONTROL_PORT, CONTROL_MASK);
   #else
-    CONTROL_PORT |= CONTROL_MASK;   // Enable internal pull-up resistors. Normal high operation.
+    //CONTROL_PORT |= CONTROL_MASK;   
+    // Enable internal pull-up resistors. Normal-high/Active-Low operation.
+    enablePORTpullups_masked(CONTROL_PORT, CONTROL_MASK);
   #endif
-  CONTROL_PCMSK |= CONTROL_MASK;  // Enable specific pins of the Pin Change Interrupt
-  PCICR |= (1 << CONTROL_INT);   // Enable Pin Change Interrupt
+  //CONTROL_PCMSK |= CONTROL_MASK;  // Enable specific pins of the Pin Change Interrupt
+  //PCICR |= (1 << CONTROL_INT);   // Enable Pin Change Interrupt
+  Control_EnablePinChangeInterrupts();
 }
 
 
@@ -38,13 +46,39 @@ void system_init()
 // only the realtime command execute variable to have the main program execute these when 
 // its ready. This works exactly like the character-based realtime commands when picked off
 // directly from the incoming serial data stream.
-ISR(CONTROL_INT_vect) 
+//NOTE: No debouncing for Control-signals? That seems strange... Bounce on
+//limit-switches is less a concern, if a change is detected, it should
+//respond by halting, regardless of the level thereafter.
+//Yet, for control-signals, there's reason to *release* a control-signal,
+//right? E.g. the safety-door is open, do whatever. It then closes,
+//resume... But when it "bounces"... seems a bigger concern than the
+//*latching* functionality of the limit-switches...
+
+//ISR(CONTROL_INT_vect) 
+Control_PinChangeInterruptHandler()
 {
-  uint8_t pin = (CONTROL_PIN & CONTROL_MASK);
+
+  //This is only necessary for some architectures
+  // on others (e.g. AVR), it will compile to Nada
+  //Note that, in the future, this "interrupt-handler" may actually be a
+  //function called from an actual interrupt-handler
+  //E.G. if the Control pins and Limit pins are on the same port/interrupt
+  //In which case, the pin-change-interrupt-handler will have to determine
+  //whether to call Control_PinChangeInterruptHandler() or
+  //Limit_PinChangeInterruptHandler() as necessary.
+  //In which which case, this, again, will be nada... as it will be handled
+  //in the general-purpose pin-change-interrupt-handler.
+  Control_clearPinChangeFlag();
+
+  //uint8_t pin = (CONTROL_PIN & CONTROL_MASK);
+  gpioPortWidth_t pin = (readioPORT(CONTROL_PORT) & CONTROL_MASK);
+
   #ifndef INVERT_ALL_CONTROL_PINS
     pin ^= CONTROL_INVERT_MASK;
   #endif
   // Enter only if any CONTROL pin is detected as active.
+  //Assuming there's reason these have inherent priority due to their being
+  //else-if'd... CycleStart overrides safety-door?
   if (pin) { 
     if (bit_istrue(pin,bit(RESET_BIT))) {
       mc_reset();
@@ -67,9 +101,11 @@ uint8_t system_check_safety_door_ajar()
 {
   #ifdef ENABLE_SAFETY_DOOR_INPUT_PIN
     #ifdef INVERT_CONTROL_PIN
-      return(bit_istrue(CONTROL_PIN,bit(SAFETY_DOOR_BIT)));
+      //return(bit_istrue(CONTROL_PIN,bit(SAFETY_DOOR_BIT)));
+      return( bit_istrue( readioPORT(CONTROL_PORT), bit(SAFETY_DOOR_BIT) ));
     #else
-      return(bit_isfalse(CONTROL_PIN,bit(SAFETY_DOOR_BIT)));
+      //return(bit_isfalse(CONTROL_PIN,bit(SAFETY_DOOR_BIT)));
+      return(bit_isfalse( readioPORT(CONTROL_PORT), bit(SAFETY_DOOR_BIT) ));
     #endif
   #else
     return(false); // Input pin not enabled, so just return that it's closed.
@@ -243,7 +279,7 @@ uint8_t system_execute_line(char *line)
             helper_var = gc_execute_line(line); // Set helper_var to returned status code.
             if (helper_var) { return(helper_var); }
             else { 
-              helper_var = trunc(parameter); // Set helper_var to int value of parameter
+              helper_var = g_trunc(parameter); // Set helper_var to int value of parameter
               settings_store_startup_line(helper_var,line);
             }
           } else { // Store global setting.

@@ -20,6 +20,228 @@
 */
 
 #include "grbl.h"
+#include CONCAT_HEADER(stepper_,__MCU_ARCH__)
+
+
+#ifndef __BYTE_IDENTICAL_TEST__
+//Needed for some of the new functions...
+static gpioPortWidth_t dir_port_invert_mask;
+#endif
+
+
+//See these definitions in stepper.h and the selection in config.h
+#if( (STEPPER_INTERFACE == STEPPER_INTERFACE__STEP_DIR) \
+     || !defined(STEPPER_INTERFACE) )
+ //TODO: These names suck.
+
+ #define STEPPER_SetDirections(directionBits) \
+      writePORToutputs_masked(DIRECTION_PORT, DIRECTION_MASK, \
+            ((directionBits) & DIRECTION_MASK) )
+
+ #define STEPPER_SetStepBits(stepBits) \
+    writePORToutputs_masked(STEP_PORT, STEP_MASK, (stepBits))
+
+ //TODO: This is confusing... step_port_invert_mask is clearly used here
+ // But wasn't so clearly-used in/leading-up-to SetStepBits...
+ #define STEPPER_ClearStepBits() \
+  writePORToutputs_masked(STEP_PORT, STEP_MASK, (step_port_invert_mask & STEP_MASK) );
+
+#else //NOT using the officially supported Step/Dir interface
+
+ //To make it backwards-compatible, we'll just tack this on as a new bit of
+ //code, rather'n rewriting the existing code to support the new interface
+ //This isn't *so* crazy, any motor would have a direction and a position
+ //Calling it a "step" to, e.g., increment a DC-motor one encoder-tick is
+ //just a matter of naming...
+
+ //However: grbl uses the pin-masks to track the step/direction bits in
+ // most cases...
+ // (rather'n, say, always using bit0=X, bit1=Y, bit2=Z, regardless of
+ //  which pin they're actually wired-to)
+
+ //SO: again, rather'n changing all the code, we'll work with that standard
+ //    and therefore will use variables of type gpioPortWidth_t to store
+ //    that information, despite the fact it will NOT be used with a gpio.
+
+ //We need to track the direction, as it's set up *before* the step-command
+ //is issued
+ //It's entirely plausible we could use the original variables for these
+ //things, but this adds a level of abstraction, ish, or something. Maybe
+ //I'm just lazy.
+ //TODO: Am making this "global" for all non step/dir interfaces
+ //      But, it may make sense to make it specific to the interface
+ //      (again, e.g. DC-motors with encoders would likely have a
+ //       direction-input on their H-bridge chip... ToPonder)
+ //TODO: Similarly, it might make sense to have STEP_PULSE_DELAY be an
+ //      option for such motor/H-bridge combos, as well... hmmmm.... NYI
+// volatile gpioPortWidth_t  directionBits;
+// #define STEPPER_SetDirections(dirBitsIn) (directionBits = ((dirBitsIn) & DIRECTION_MASK))
+
+
+ //NO: Too friggin' confusing...
+ // COULD probably get rid of the whole wonky-bit-arrangement thing,
+ // altogether... but let's, instead, for now, just normalize what we've
+ // got coming in...
+ 
+ //Bits arranged per X_AXIS, etc. definitions...
+ volatile uint8_t directions;
+ 
+ void STEPPER_SetDirections(gpioPortWidth_t dirBitsIn)
+ {
+    //Undo whatever doings may've been done before.
+    dirBitsIn ^= dir_port_invert_mask;
+
+    uint8_t dirTemp=0;
+
+    uint8_t axis;
+    for(axis=X_AXIS; axis<=Z_AXIS; axis++)
+    {
+      if(dirBitsIn & get_direction_pin_mask(axis))
+         dirTemp |= (1<<axis);
+    }
+
+    directions = dirTemp;
+ }
+
+
+
+ #if ( (STEPPER_INTERFACE == STEPPER_INTERFACE__PHASE_AB) \
+       || (STEPPER_INTERFACE == STEPPER_INTERFACE__PHASE_AB_PWM) )
+
+  //So, this guy is originally used to set the STEP bits on the outputs
+  // In other words, this guy activates the step-pulse for axes which are
+  // to be moved by a step...
+  // but, when not using a Step/Dir interface, this guy is essentially the
+  // invoking of the advancing of the motor by one step, as appropriate.
+  //THUS: in PHASE_AB mode, this is the function which increments or
+  //decrements the phase, as appropriate.
+  //AGAIN: its input is "outbits" which are NOT 0->2==X->Z
+  void STEPPER_SetStepBits(gpioPortWidth_t stepBitsIn)
+  {
+      //stepperPhase is just an integer corresponding, roughly, to...
+      // not the *position*, per se...
+      // It kinda represents the phase of one of the windings
+      // (where the other winding is 90degrees out of phase from that)
+      // But... since...
+      //  there's no real reason to limit its value
+      //  Having a hard time explaining this.
+      //   E.G. Corresponding to FULL-STEPPING, there are four phases
+      //        or combinations of outputs that result in four full steps
+      //        Those "phases" are output in sequence and repeat
+      //   E.G.2. Corresponding to MICRO-STEPPING, there may be any number
+      //        of micro-steps between full steps, but as with
+      //        full-stepping there are four specific phases which
+      //        correspond to full-steps which must occur in sequence and
+      //        repeat. Thus, say there's 4 microsteps between each full
+      //        step, then the stepperPhase would advance 16 times before
+      //        repeating.
+      // But, again, there's no need to *reset* stepperPhase after a cycle
+      // completes, because it's in an integer which will overflow properly
+      // (and underflow, as well), as long as
+      // 256 % (stepsPerCycle(=4) * microstepsPerStep) == 0
+      // Which it will.
+      // The values of stepperPhase[axis1] and stepperPhase[axis2] are
+      // never compared, either mathematically, programmatically, nor in
+      // any physical sense, so they needn't be of the same "units"
+      // (full-steps vs. microsteps, etc.)
+      // Except, of course, that a microstepped phase of, say 3 might be
+      // less than a full step, whereas a full-stepped phase of 3 would be
+      // three full steps... Generally irrelevent, the axes' steps/mm would
+      // have to be adjusted accordingly, anyhow.
+      // (Where steps/mm corresponds NOT to FULL steps, but to increments
+      // in position (steps, or microsteps, as appropriate)).
+      static uint8_t stepperPhase[3];
+
+      gpioPortWidth_t phaseOutBits = 0;
+
+
+      uint8_t axis;
+      for(axis=X_AXIS; axis<=Z_AXIS; axis++)
+      {
+         if(stepBitsIn & get_step_pin_mask(axis))
+         {
+            //We need to take a step...
+            // one direction or the other...
+            //Note that direction is positive when zero and negative when 1
+            // per something I read somewhere
+            // (TODO: Does This Get Affected By invert-masks/bits???)
+            if(!(directions & (1<<axis)))
+               stepperPhase[axis]++;
+            else
+               stepperPhase[axis]--;
+         }
+
+
+        #if (STEPPER_INTERFACE == STEPPER_INTERFACE__PHASE_AB_PWM)
+         //If we have pwm-handling/microstepping for the axis, handle that
+         // otherwise, use single-stepping
+         if( (1<<axis) & PHASE_AB_PWM__AXES_MASK ) 
+         {
+            Stepper_setPWMfromPhase(axis, stepperPhase[axis]);
+         }
+         else
+        #endif
+         {
+         //Assuming all axes' phase-output bits are on the same port...
+         //NOTE: we're using the Step/Dir output bits as phase outputs
+         // STEP = PHASE_A
+         // DIR = PHASE_B
+         // So, we can use get_step/direction_pin_mask() to assign the
+         // appropriate bits' output-values.
+         switch(stepperPhase[axis]%4)
+         {
+            //Step/Phase Order: AB = 00 01 11 10
+            // Some sorta vague idea that the phase-value could be used to
+            // directly calculate the phase-output (without a table) e.g.
+            // using the second bit of the phase-value for one output
+            // and adding one to the phase-value, then taking (again) the
+            // second-bit of the (new) phase-value for the other output...?
+            // But I can't quite wrap my head around it right now.
+
+            // 00
+            case 0:
+               //Nothin' To Do.
+               break;
+            // 01
+            case 1:
+               //A=0, nothing to do
+               //B=1: B=DIR...
+               phaseOutBits |= get_direction_pin_mask(axis);
+               break;
+            // 11
+            case 2:
+               //A=1: A=STEP...
+               phaseOutBits |= get_step_pin_mask(axis);
+               //B=1: B=DIR...
+               phaseOutBits |= get_direction_pin_mask(axis);
+               break;
+            // 10
+            case 3:
+            default:
+               //A=1: A=STEP...
+               phaseOutBits |= get_step_pin_mask(axis);
+               //B=0, nothing to do.
+               break;
+         }
+         }
+      }
+
+      //Write The STEP/DIR outputs WITH PHASE OUTPUT VALUES.
+      writePORToutputs_masked(STEP_PORT, (STEP_MASK | DIRECTION_MASK) , phaseOutBits);
+  }
+
+ //Nothing to do, here...
+ //TODO: Then there's no reason to have Timer0 running at all... hmmm...
+ #define STEPPER_ClearStepBits() {}
+
+ #else
+  #error "WTF? This isn't a valid STEPPER_INTERFACE"
+ #endif
+#endif
+
+
+
+
 
 
 // Some useful constants.
@@ -52,10 +274,11 @@
 // discarded when entirely consumed and completed by the segment buffer. Also, AMASS alters this
 // data for its own use. 
 typedef struct {  
-  uint8_t direction_bits;
+  gpioPortWidth_t direction_bits;
   uint32_t steps[N_AXIS];
   uint32_t step_event_count;
 } st_block_t;
+
 static st_block_t st_block_buffer[SEGMENT_BUFFER_SIZE-1];
 
 // Primary stepper segment ring buffer. Contains small, short line segments for the stepper 
@@ -81,13 +304,13 @@ typedef struct {
            counter_y, 
            counter_z;
   #ifdef STEP_PULSE_DELAY
-    uint8_t step_bits;  // Stores out_bits output to complete the step pulse delay
+    gpioPortWidth_t step_bits;  // Stores out_bits output to complete the step pulse delay
   #endif
   
   uint8_t execute_step;     // Flags step execution for each interrupt.
   uint8_t step_pulse_time;  // Step pulse reset time after step rise
-  uint8_t step_outbits;         // The next stepping-bits to be output
-  uint8_t dir_outbits;
+  gpioPortWidth_t step_outbits;         // The next stepping-bits to be output
+  gpioPortWidth_t dir_outbits;
   #ifdef ADAPTIVE_MULTI_AXIS_STEP_SMOOTHING
     uint32_t steps[N_AXIS];
   #endif
@@ -97,6 +320,7 @@ typedef struct {
   st_block_t *exec_block;   // Pointer to the block data for the segment being executed
   segment_t *exec_segment;  // Pointer to the segment being executed
 } stepper_t;
+
 static stepper_t st;
 
 // Step segment ring buffer indices
@@ -105,8 +329,15 @@ static uint8_t segment_buffer_head;
 static uint8_t segment_next_head;
 
 // Step and direction port invert masks. 
-static uint8_t step_port_invert_mask;
-static uint8_t dir_port_invert_mask;
+static gpioPortWidth_t step_port_invert_mask;
+
+
+//Moved up near the top
+#ifdef __BYTE_IDENTICAL_TEST__
+ //Except, relocation in memory-space causes BYTE_IDENTICAL_TEST to fail...
+ static gpioPortWidth_t dir_port_invert_mask;
+#endif
+
 
 // Used to avoid ISR nesting of the "Stepper Driver Interrupt". Should never occur though.
 static volatile uint8_t busy;   
@@ -183,8 +414,16 @@ static st_prep_t prep;
 void st_wake_up() 
 {
   // Enable stepper drivers.
-  if (bit_istrue(settings.flags,BITFLAG_INVERT_ST_ENABLE)) { STEPPERS_DISABLE_PORT |= (1<<STEPPERS_DISABLE_BIT); }
-  else { STEPPERS_DISABLE_PORT &= ~(1<<STEPPERS_DISABLE_BIT); }
+  if (bit_istrue(settings.flags,BITFLAG_INVERT_ST_ENABLE)) 
+  { 
+     //STEPPERS_DISABLE_PORT |= (1<<STEPPERS_DISABLE_BIT); 
+     setPORTpin(STEPPERS_DISABLE_PORT, STEPPERS_DISABLE_BIT);
+  }
+  else 
+  { 
+     //STEPPERS_DISABLE_PORT &= ~(1<<STEPPERS_DISABLE_BIT); 
+     clearPORTpin(STEPPERS_DISABLE_PORT, STEPPERS_DISABLE_BIT);
+  }
 
   if (sys.state & (STATE_CYCLE | STATE_HOMING)){
     // Initialize stepper output bits
@@ -194,16 +433,19 @@ void st_wake_up()
     // Initialize step pulse timing from settings. Here to ensure updating after re-writing.
     #ifdef STEP_PULSE_DELAY
       // Set total step pulse time after direction pin set. Ad hoc computation from oscilloscope.
-      st.step_pulse_time = -(((settings.pulse_microseconds+STEP_PULSE_DELAY-2)*TICKS_PER_MICROSECOND) >> 3);
+      st.step_pulse_time = -(((settings.pulse_microseconds+STEP_PULSE_DELAY-2)*TIMER_CLOCK_TICKS_PER_MICROSECOND) >> 3);
       // Set delay between direction pin write and step command.
-      OCR0A = -(((settings.pulse_microseconds)*TICKS_PER_MICROSECOND) >> 3);
+      //OCR0A = -(((settings.pulse_microseconds)*TICKS_PER_MICROSECOND) >> 3);
+      TIMER0A_setOuputCompareValue(
+         -(((settings.pulse_microseconds)*TIMER_CLOCK_TICKS_PER_MICROSECOND) >> 3) );
     #else // Normal operation
       // Set step pulse time. Ad hoc computation from oscilloscope. Uses two's complement.
-      st.step_pulse_time = -(((settings.pulse_microseconds-2)*TICKS_PER_MICROSECOND) >> 3);
+      st.step_pulse_time = -(((settings.pulse_microseconds-2)*TIMER_CLOCK_TICKS_PER_MICROSECOND) >> 3);
     #endif
 
     // Enable Stepper Driver Interrupt
-    TIMSK1 |= (1<<OCIE1A);
+    //TIMSK1 |= (1<<OCIE1A);
+    TIMER1A_enableOutputCompareInterrupt();
   }
 }
 
@@ -212,8 +454,16 @@ void st_wake_up()
 void st_go_idle() 
 {
   // Disable Stepper Driver Interrupt. Allow Stepper Port Reset Interrupt to finish, if active.
-  TIMSK1 &= ~(1<<OCIE1A); // Disable Timer1 interrupt
-  TCCR1B = (TCCR1B & ~((1<<CS12) | (1<<CS11))) | (1<<CS10); // Reset clock to no prescaling.
+  //TIMSK1 &= ~(1<<OCIE1A); // Disable Timer1 interrupt
+  TIMER1A_disableOutputCompareInterrupt();
+
+  //TODO: Wait, what? We want the clock to count at full-speed when Idle?
+  //      Is this because the timer-interrupt is responsible for setting up
+  //      the next timer-interrupt time...? So, interrupt quickly so it'll
+  //      be ready as quickly as possible...?
+  //TCCR1B = (TCCR1B & ~((1<<CS12) | (1<<CS11))) | (1<<CS10); // Reset clock to no prescaling.
+  TIMER1_fullSpeed();
+  
   busy = false;
   
   // Set stepper driver idle state, disabled or enabled, depending on settings and circumstances.
@@ -225,8 +475,19 @@ void st_go_idle()
     pin_state = true; // Override. Disable steppers.
   }
   if (bit_istrue(settings.flags,BITFLAG_INVERT_ST_ENABLE)) { pin_state = !pin_state; } // Apply pin invert.
-  if (pin_state) { STEPPERS_DISABLE_PORT |= (1<<STEPPERS_DISABLE_BIT); }
-  else { STEPPERS_DISABLE_PORT &= ~(1<<STEPPERS_DISABLE_BIT); }
+  if (pin_state) 
+  { 
+#ifndef __IGNORE_MEH_ERRORS__
+#error "is this interruptable?"
+#endif
+     //STEPPERS_DISABLE_PORT |= (1<<STEPPERS_DISABLE_BIT); 
+     setPORTpin(STEPPERS_DISABLE_PORT, STEPPERS_DISABLE_BIT);
+  }
+  else 
+  { 
+     //STEPPERS_DISABLE_PORT &= ~(1<<STEPPERS_DISABLE_BIT);
+     clearPORTpin(STEPPERS_DISABLE_PORT, STEPPERS_DISABLE_BIT);
+  }
 }
 
 
@@ -278,25 +539,62 @@ void st_go_idle()
 // TODO: Replace direct updating of the int32 position counters in the ISR somehow. Perhaps use smaller
 // int8 variables and update position counters only when a segment completes. This can get complicated 
 // with probing and homing cycles that require true real-time positions.
-ISR(TIMER1_COMPA_vect)
+//ISR(TIMER1_COMPA_vect)
+TIMER1A_OutputCompareInterruptHandler()
 {        
+  
+
+   //This is necessary on e.g. PIC32, but not on AVR, so on AVR, it will
+   //compile to nada. No extra instructions.
+   TIMER1A_clearOutputCompareFlag();
+
+   //meh: This was already commented-out... so not analyzed.
 // SPINDLE_ENABLE_PORT ^= 1<<SPINDLE_ENABLE_BIT; // Debug: Used to time ISR
   if (busy) { return; } // The busy-flag is used to avoid reentering this interrupt
   
   // Set the direction pins a couple of nanoseconds before we step the steppers
-  DIRECTION_PORT = (DIRECTION_PORT & ~DIRECTION_MASK) | (st.dir_outbits & DIRECTION_MASK);
+  //DIRECTION_PORT = (DIRECTION_PORT & ~DIRECTION_MASK) | (st.dir_outbits & DIRECTION_MASK);
+  //writePORToutputs_masked(DIRECTION_PORT, DIRECTION_MASK, (st.dir_outbits & DIRECTION_MASK) );
+   STEPPER_SetDirections(st.dir_outbits);
 
   // Then pulse the stepping pins
   #ifdef STEP_PULSE_DELAY
-    st.step_bits = (STEP_PORT & ~STEP_MASK) | st.step_outbits; // Store out_bits to prevent overwriting.
-  #else  // Normal operation
-    STEP_PORT = (STEP_PORT & ~STEP_MASK) | st.step_outbits;
+   
+   #if( (STEPPER_INTERFACE != STEPPER_INTERFACE__STEP_DIR) \
+        && defined(STEPPER_INTERFACE) )
+    #error "STEP_PULSE_DELAY is NYI for stepper-interfaces other than step/dir"
+   #endif
+    //meh: NO!
+   #ifndef __IGNORE_MEH_ERRORS__
+    #error "Functionality-change, here, by meh..."
+   #endif
+    // What's to stop STEP_PORT's *other* pins from being changed between
+    // this interrupt and the next...?!
+   #ifdef __ORIGINAL_STEP_BITS__
+    
+    //st.step_bits = (STEP_PORT & ~STEP_MASK) | st.step_outbits; // Store out_bits to prevent overwriting.
+    st.step_bits = (readoutputsPORT(STEP_PORT) & ~STEP_MASK) | st.step_outbits; // Store out_bits to prevent overwriting.
+   #else
+    #error "This is UNVERIFIED, so either use __ORIGINAL_STEP_BITS__ or remove this error and see what happens..."
+    st.step_bits = st.step_outbits; // Buffer outbits to prevent overwriting
+   #endif
+
+
+  #else  // Normal operation (NOT STEP_PULSE_DELAY)
+    //STEP_PORT = (STEP_PORT & ~STEP_MASK) | st.step_outbits;
+    //writePORToutputs_masked(STEP_PORT, STEP_MASK, st.step_outbits);
+    STEPPER_SetStepBits(st.step_outbits);
   #endif  
 
   // Enable step pulse reset timer so that The Stepper Port Reset Interrupt can reset the signal after
   // exactly settings.pulse_microseconds microseconds, independent of the main Timer1 prescaler.
-  TCNT0 = st.step_pulse_time; // Reload Timer0 counter
-  TCCR0B = (1<<CS01); // Begin Timer0. Full speed, 1/8 prescaler
+  //TODO: Confusing... it's not counting *down*, it's counting *up* from
+  //here...
+  //TCNT0 = st.step_pulse_time; // Reload Timer0 counter
+  TIMER0_loadCount( st.step_pulse_time );
+
+  //TCCR0B = (1<<CS01); // Begin Timer0. Full speed(?), 1/8 prescaler
+  TIMER0_startDiv8();
 
   busy = true;
   sei(); // Re-enable interrupts to allow Stepper Port Reset Interrupt to fire on-time. 
@@ -311,11 +609,14 @@ ISR(TIMER1_COMPA_vect)
 
       #ifndef ADAPTIVE_MULTI_AXIS_STEP_SMOOTHING
         // With AMASS is disabled, set timer prescaler for segments with slow step frequencies (< 250Hz).
-        TCCR1B = (TCCR1B & ~(0x07<<CS10)) | (st.exec_segment->prescaler<<CS10);
+        //TCCR1B = (TCCR1B & ~(0x07<<CS10)) | (st.exec_segment->prescaler<<CS10);
+        TIMER1_setPrescaler(st.exec_segment->prescaler);
       #endif
 
       // Initialize step segment timing per step and load number of steps to execute.
-      OCR1A = st.exec_segment->cycles_per_tick;
+      //OCR1A = st.exec_segment->cycles_per_tick;
+      TIMER1A_setCompareMatchValue( st.exec_segment->cycles_per_tick );
+
       st.step_count = st.exec_segment->n_step; // NOTE: Can sometimes be zero when moving slow.
       // If the new segment starts a new planner block, initialize stepper variables and counters.
       // NOTE: When the segment data index changes, this indicates a new planner block.
@@ -397,6 +698,7 @@ ISR(TIMER1_COMPA_vect)
 
   st.step_outbits ^= step_port_invert_mask;  // Apply step port invert mask    
   busy = false;
+   //meh: This was already commented-out, so not analyzed...
 // SPINDLE_ENABLE_PORT ^= 1<<SPINDLE_ENABLE_BIT; // Debug: Used to time ISR
 }
 
@@ -412,22 +714,62 @@ ISR(TIMER1_COMPA_vect)
 // This interrupt is enabled by ISR_TIMER1_COMPAREA when it sets the motor port bits to execute
 // a step. This ISR resets the motor port after a short period (settings.pulse_microseconds) 
 // completing one step cycle.
-ISR(TIMER0_OVF_vect)
+//ISR(TIMER0_OVF_vect)
+TIMER0_OverflowInterruptHandler()
 {
+   //This is necessary on e.g. PIC32, but not on AVR, so on AVR, it will
+   //compile to nada. No extra instructions.
+   TIMER0_clearOverflowFlag();
+
   // Reset stepping pins (leave the direction pins)
-  STEP_PORT = (STEP_PORT & ~STEP_MASK) | (step_port_invert_mask & STEP_MASK); 
-  TCCR0B = 0; // Disable Timer0 to prevent re-entering this interrupt when it's not needed. 
+  // (Nothing is done here if NOT using the  STEP/DIR interface)
+  // (in which case: TODO: There's really no reason to have Timer0 running
+  //  at all)
+  //STEP_PORT = (STEP_PORT & ~STEP_MASK) | (step_port_invert_mask & STEP_MASK); 
+  //writePORToutputs_masked(STEP_PORT, STEP_MASK, (step_port_invert_mask & STEP_MASK) );
+  STEPPER_ClearStepBits();
+
+
+  //TCCR0B = 0; // Disable Timer0 to prevent re-entering this interrupt when it's not needed. 
+  TIMER0_stopCounting();
+  //TODO: Should we not reset its value to zero...?
+  //      Or are they counting-up from some value to overflow... OK...
 }
+
+
+
 #ifdef STEP_PULSE_DELAY
-  // This interrupt is used only when STEP_PULSE_DELAY is enabled. Here, the step pulse is
-  // initiated after the STEP_PULSE_DELAY time period has elapsed. The ISR TIMER2_OVF interrupt
-  // will then trigger after the appropriate settings.pulse_microseconds, as in normal operation.
-  // The new timing between direction, step pulse, and step complete events are setup in the
-  // st_wake_up() routine.
-  ISR(TIMER0_COMPA_vect) 
-  { 
-    STEP_PORT = st.step_bits; // Begin step pulse.
-  }
+// This interrupt is used only when STEP_PULSE_DELAY is enabled. Here, the step pulse is
+// initiated after the STEP_PULSE_DELAY time period has elapsed. The ISR TIMER2_OVF interrupt
+// will then trigger after the appropriate settings.pulse_microseconds, as in normal operation.
+// The new timing between direction, step pulse, and step complete events are setup in the
+// st_wake_up() routine.
+//ISR(TIMER0_COMPA_vect) 
+TIMER0A_OutputCompareInterruptHandler()
+{
+
+   //This is necessary on e.g. PIC32, but not on AVR, so on AVR, it will
+   //compile to nada. No extra instructions.
+   TIMER0A_clearOutputCompareFlag();
+
+    //meh: So there's no risk of STEP_PORT being used by other things
+    // (e.g. the spindle) and having a change between the two interrupts on
+    // the other port-pins, and being rewritten here...?
+    //NO. Sorry... redefining st.step_bits to buffer st.step_outbits
+    // The only reason I can imagine *not* to do the port-read/mask HERE is
+    // if there's some risk the extra instructions will be too slow...
+    // If that was the case, this entire code-scheme would be entirely
+    // different, with notes all the way regarding such presumptions (that
+    // the port *won't* change between interrupts).
+#ifdef __ORIGINAL_STEP_BITS__
+    //STEP_PORT = st.step_bits; // Begin step pulse.
+    writeAllPORToutputs_unsafe(STEP_PORT, st.step_bits);
+#else
+    //Should be: 
+    //STEP_PORT = (STEP_PORT & ~STEP_MASK) | st.step_bits;
+    writePORToutputs_masked(STEP_PORT, STEP_MASK, st.step_bits);
+#endif
+}
 #endif
 
 
@@ -461,10 +803,15 @@ void st_reset()
   busy = false;
   
   st_generate_step_dir_invert_masks();
-      
-  // Initialize step and direction port pins.
-  STEP_PORT = (STEP_PORT & ~STEP_MASK) | step_port_invert_mask;
-  DIRECTION_PORT = (DIRECTION_PORT & ~DIRECTION_MASK) | dir_port_invert_mask;
+  
+#ifndef __IGNORE_MEH_ERRORS__  
+#error "Is this ever called while interrupts are running? If so, they need to be disabled around here..."
+#endif
+  // Initialize step and direction port pins. 
+  //STEP_PORT = (STEP_PORT & ~STEP_MASK) | step_port_invert_mask; 
+  writePORToutputs_masked(STEP_PORT, STEP_MASK, step_port_invert_mask);
+  //DIRECTION_PORT = (DIRECTION_PORT & ~DIRECTION_MASK) | dir_port_invert_mask;
+  writePORToutputs_masked(DIRECTION_PORT, DIRECTION_MASK, dir_port_invert_mask);
 }
 
 
@@ -472,25 +819,54 @@ void st_reset()
 void stepper_init()
 {
   // Configure step and direction interface pins
-  STEP_DDR |= STEP_MASK;
-  STEPPERS_DISABLE_DDR |= 1<<STEPPERS_DISABLE_BIT;
-  DIRECTION_DDR |= DIRECTION_MASK;
+  //meh: This is now handled, below...
+  //STEP_DDR |= STEP_MASK;
+  configurePORToutputs_masked(STEP_PORT, STEP_MASK);
+
+  //meh: ditto
+  //STEPPERS_DISABLE_DDR |= 1<<STEPPERS_DISABLE_BIT;
+  configurePORToutput(STEPPERS_DISABLE_PORT, STEPPERS_DISABLE_BIT);
+  
+  //meh: ditto
+  //DIRECTION_DDR |= DIRECTION_MASK;
+  configurePORToutputs_masked(DIRECTION_PORT, DIRECTION_MASK);
+
+
+ #if (STEPPER_INTERFACE == STEPPER_INTERFACE__PHASE_AB_PWM)
+  #ifndef __XC32__ //PIC32...
+   #error "This is not particularly architecture-independent! See notes."
+  //NOTE...
+  // The output registers are set-up (AND CHANGED!) despite the PWM mode.
+  // PIC32, this should be OK, LATn outputs don't have different effects
+  // when peripherals are on... 
+  // OTHER ARCHITECTURES may respond differently!
+  #endif
+  Stepper_initPWM();
+ #endif
+
 
   // Configure Timer 1: Stepper Driver Interrupt
+/*
   TCCR1B &= ~(1<<WGM13); // waveform generation = 0100 = CTC
   TCCR1B |=  (1<<WGM12);
   TCCR1A &= ~((1<<WGM11) | (1<<WGM10)); 
   TCCR1A &= ~((1<<COM1A1) | (1<<COM1A0) | (1<<COM1B1) | (1<<COM1B0)); // Disconnect OC1 output
   // TCCR1B = (TCCR1B & ~((1<<CS12) | (1<<CS11))) | (1<<CS10); // Set in st_go_idle().
   // TIMSK1 &= ~(1<<OCIE1A);  // Set in st_go_idle().
-  
+*/
+  TIMER1_initClearTimerOnCompare();
+
   // Configure Timer 0: Stepper Port Reset Interrupt
+/*
   TIMSK0 &= ~((1<<OCIE0B) | (1<<OCIE0A) | (1<<TOIE0)); // Disconnect OC0 outputs and OVF interrupt.
   TCCR0A = 0; // Normal operation
   TCCR0B = 0; // Disable Timer0 until needed
   TIMSK0 |= (1<<TOIE0); // Enable Timer0 overflow interrupt
+*/
+  TIMER0_initNormalCountingAndOverflowInterrupt();
   #ifdef STEP_PULSE_DELAY
-    TIMSK0 |= (1<<OCIE0A); // Enable Timer0 Compare Match A interrupt
+    //TIMSK0 |= (1<<OCIE0A); // Enable Timer0 Compare Match A interrupt
+    TIMER0A_enableCompareMatchInterrupt();
   #endif
 }
   
@@ -769,7 +1145,19 @@ void st_prep_buffer()
     prep.dt_remainder = (n_steps_remaining - steps_remaining)*inv_rate; // Update segment partial step time
 
     // Compute CPU cycles per step for the prepped segment.
-    uint32_t cycles = ceil( (TICKS_PER_MICROSECOND*1000000*60)*inv_rate ); // (cycles/step)    
+    // NOTE: This is no longer CPU-cycles!
+    //  E.G. PIC32 emulates AVR's timers by multiplying values by 3
+    //       (Thankfully, it's a 32-bit timer!)
+    //       So, cycles is essentially the number of periods of an
+    //       imaginary/simulated 16MHz clock
+    //  Except, of course, an AVR might be running at, say, 20MHz
+    //       and then this stuff would still work out, but the PIC32 stuff
+    //       wouldn't.
+    // BIG WARNING: This overflows if F_CPU is too high! And that's
+    // *before* the multiplication by inv_rate... So with inv_rate=1 this
+    // is *right near* the limit of a uint32_t!
+    uint32_t cycles = ceil( (TIMER_CLOCK_TICKS_PER_MICROSECOND*1000000*60)*inv_rate ); 
+                     // (cycles/step)    
 
     #ifdef ADAPTIVE_MULTI_AXIS_STEP_SMOOTHING        
       // Compute step timing and multi-axis smoothing level.
@@ -847,3 +1235,73 @@ void st_prep_buffer()
     return 0.0f;
   }
 #endif
+
+
+
+#if (STEPPER_INTERFACE == STEPPER_INTERFACE__PHASE_AB_PWM)
+
+ //16 is REALLY SLOW. (May no longer be true)
+ #define MICROSTEPS_PER_STEP  4 //16 //4
+ //The typical four phases in a bipolar stepper-motor's advancement cycle
+ #define STEPS_PER_CYCLE      4
+
+ //It's gotta fit in stepperPhase which is uint8_t (why?)
+ #if( 256 % (MICROSTEPS_PER_STEP * STEPS_PER_CYCLE) != 0)
+  #error "MICROSTEPS_PER_STEP * STEPS_PER_CYCLE * N != 256"
+ #endif
+
+
+
+ void Stepper_setPWMfromPhase(uint8_t axis, uint8_t stepperPhase)
+ {
+   float phaseA_radians =
+      (2.0*M_PI)/(STEPS_PER_CYCLE)/(MICROSTEPS_PER_STEP) *
+      (stepperPhase%(STEPS_PER_CYCLE * MICROSTEPS_PER_STEP));
+   float phaseB_radians =
+      (M_PI/2.0) + phaseA_radians;
+
+   //Mighta used g_round, but it's *plausible* with floating-error
+   // that we might get 255.5 -> 256 -> 0... or -.5 -> -1 -> 255... ugly.
+   int32_t phaseA_power = g_lround((sin(phaseA_radians)*127.5) + 127.5);
+   if(phaseA_power > 255)
+      phaseA_power=255;
+   if(phaseA_power < 0)
+      phaseA_power=0;
+
+
+   int32_t phaseB_power = g_lround((sin(phaseB_radians)*127.5) + 127.5);
+   if(phaseB_power > 255)
+      phaseB_power=255;
+   if(phaseB_power < 0)
+      phaseB_power=0;
+
+   //And people wonder why I avoid floating point...
+
+   //Note that this function should/will never be called with inactive
+   //cases, so with these #if tests, we're just saving some program-space
+   //and maybe making it a bit more clear
+   switch(axis)
+   {
+     #if(PHASE_AB_PWM__AXES_MASK & (1<<X_AXIS) )
+      case X_AXIS:
+         StepperX_setPWM(phaseA_power, phaseB_power);
+         break;
+     #endif
+
+     #if(PHASE_AB_PWM__AXES_MASK & (1<<Y_AXIS) )
+      case Y_AXIS:
+         StepperY_setPWM(phaseA_power, phaseB_power);
+         break;
+     #endif
+
+     #if(PHASE_AB_PWM__AXES_MASK & (1<<Z_AXIS) )
+      case Z_AXIS:
+         StepperZ_setPWM(phaseA_power, phaseB_power);
+         break;
+     #endif
+      default:
+         break;
+   }
+ }
+
+#endif // (STEPPER_INTERFACE == STEPPER_INTERFACE__PHASE_AB_PWM)

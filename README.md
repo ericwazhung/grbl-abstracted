@@ -1,7 +1,28 @@
-![GitHub Logo](/doc/media/Grbl Logo 250px.png)
+This is modified from Grbl v0.9j (https://github.com/grbl/grbl/)
+
+Hardware-abstracted such that it should be able to port to a new
+architecture with relative-ease. The Makefile now supports multiple
+architectures, selectable via option (currently PIC32, and AVR).
+
+Also added direct support for single-stepping, or PWM-based Microstepping,
+     which can be fed directly into H-Bridges, rather than requiring
+     dedicated stepper-drivers with Step/Dir inputs. This is a
+     configuration-option.
+
+     THIS WILL CHANGE SOMEWHAT DRAMATICALLY if I ever get around to it... I
+     don't like the naming-conventions I used for the new functions, and
+     more.
+
+     PIC32 support, currently, consists of the PIC32MX170F256B, with TWO
+     axes. (There weren't enough pins for Z).
 
 
+     THIS IS FUNCTIONAL BUT NOT what I'd consider "public-ready"
+     It's made-available, here and now, because who knows how long
+     "public-ready" will be (if).
 ***
+
+###SOME ORIGINAL TEXT from README.md:
 
 Grbl is a no-compromise, high performance, low cost alternative to parallel-port-based motion control for CNC milling. It will run on a vanilla Arduino (Duemillanove/Uno) as long as it sports an Atmega 328. 
 
@@ -18,11 +39,6 @@ Grbl includes full acceleration management with look ahead. That means the contr
 * Lead Developer [_2011 - Current_]: Sungeun(Sonny) K. Jeon, Ph.D. (USA) aka @chamnit
 
 * Lead Developer [_2009 - 2011_]: Simen Svale Skogsrud (Norway). aka The Originator/Creator/Pioneer/Father of Grbl.
-
-***
-
-### Official Supporters of the Grbl CNC Project
-![Official Supporters](https://dl.dropboxusercontent.com/u/2221997/Contributors.png)
 
 ***
 
@@ -107,3 +123,9 @@ List of Supported G-Codes in Grbl v0.9 Master:
 Grbl is an open-source project and fueled by the free-time of our intrepid administrators and altruistic users. If you'd like to donate, all proceeds will be used to help fund supporting hardware and testing equipment. Thank you!
 
 [![Donate](https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=CUGXJHXA36BYW)
+
+###Hey Hey!
+If you like what I've done, for grbl-abstracted, you could donate to me as
+well!
+https://sites.google.com/site/geekattempts/misc-notes/please-donate
+Or feel free to just visit my site...

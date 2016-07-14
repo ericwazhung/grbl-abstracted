@@ -21,7 +21,6 @@
   
 #include "grbl.h"
 
-
 // Homing axis search distance multiplier. Computed by this value times the cycle travel.
 #ifndef HOMING_AXIS_SEARCH_SCALAR
   #define HOMING_AXIS_SEARCH_SCALAR  1.5 // Must be > 1 to ensure limit switch will be engaged.
@@ -31,18 +30,34 @@
 #endif
 
 void limits_init() 
-{
-  LIMIT_DDR &= ~(LIMIT_MASK); // Set as input pins
+{ 
+  //LIMIT_DDR &= ~(LIMIT_MASK); // Set as input pins
+  configurePORTinputs_masked(LIMIT_PORT, LIMIT_MASK);
 
+#ifndef __IGNORE_MEH_ERRORS__
+#error "look into DISABLE_LIMIT_PIN_PULL_UP... does this imply active-high limit-switches...?"
+#endif
   #ifdef DISABLE_LIMIT_PIN_PULL_UP
-    LIMIT_PORT &= ~(LIMIT_MASK); // Normal low operation. Requires external pull-down.
+   #ifndef __AVR_ARCH__
+    #ifndef __IGNORE_MEH_ERRORS__
+     #warning "some architectures support *internal* pull-down resistors. But that is not implemented, here..."
+    #endif
+   #endif  
+    //LIMIT_PORT &= ~(LIMIT_MASK); 
+    
+    // Normal-Low/Active-High operation. Requires external pull-down.
+    disablePORTpullups_masked(LIMIT_PORT, LIMIT_MASK);
   #else
-    LIMIT_PORT |= (LIMIT_MASK);  // Enable internal pull-up resistors. Normal high operation.
+    //LIMIT_PORT |= (LIMIT_MASK);  
+    
+    // Enable internal pull-up resistors. Normal-High/Active-Low operation.
+    enablePORTpullups_masked(LIMIT_PORT, LIMIT_MASK);
   #endif
 
   if (bit_istrue(settings.flags,BITFLAG_HARD_LIMIT_ENABLE)) {
-    LIMIT_PCMSK |= LIMIT_MASK; // Enable specific pins of the Pin Change Interrupt
-    PCICR |= (1 << LIMIT_INT); // Enable Pin Change Interrupt
+    //LIMIT_PCMSK |= LIMIT_MASK; // Enable specific pins of the Pin Change Interrupt
+    //PCICR |= (1 << LIMIT_INT); // Enable Pin Change Interrupt
+    Limits_EnablePinChangeInterrupts();
   } else {
     limits_disable(); 
   }
@@ -58,22 +73,26 @@ void limits_init()
 // Disables hard limits.
 void limits_disable()
 {
-  LIMIT_PCMSK &= ~LIMIT_MASK;  // Disable specific pins of the Pin Change Interrupt
-  PCICR &= ~(1 << LIMIT_INT);  // Disable Pin Change Interrupt
+   //LIMIT_PCMSK &= ~LIMIT_MASK;  // Disable specific pins of the Pin Change Interrupt
+   //PCICR &= ~(1 << LIMIT_INT);  // Disable Pin Change Interrupt
+   Limits_DisablePinChangeInterrupts();
 }
 
 
 // Returns limit state as a bit-wise uint8 variable. Each bit indicates an axis limit, where 
-// triggered is 1 and not triggered is 0. Invert mask is applied. Axes are defined by their
-// number in bit position, i.e. Z_AXIS is (1<<2) or bit 2, and Y_AXIS is (1<<1) or bit 1.
+// triggered is 1 and not triggered is 0. Invert mask is applied. 
+// As A Return-Value: Axes are defined by their number in bit position, 
+// i.e. Z_AXIS is (1<<2) or bit 2, and Y_AXIS is (1<<1) or bit 1.
 uint8_t limits_get_state()
 {
   uint8_t limit_state = 0;
-  uint8_t pin = (LIMIT_PIN & LIMIT_MASK);
+  gpioPortWidth_t pin = ( readioPORT(LIMIT_PORT) & LIMIT_MASK ); //(LIMIT_PIN & LIMIT_MASK);
+
   #ifdef INVERT_LIMIT_PIN_MASK
     pin ^= INVERT_LIMIT_PIN_MASK;
   #endif
   if (bit_isfalse(settings.flags,BITFLAG_INVERT_LIMIT_PINS)) { pin ^= LIMIT_MASK; }
+  
   if (pin) {  
     uint8_t idx;
     for (idx=0; idx<N_AXIS; idx++) {
@@ -95,9 +114,26 @@ uint8_t limits_get_state()
 // homing cycles and will not respond correctly. Upon user request or need, there may be a
 // special pinout for an e-stop, but it is generally recommended to just directly connect
 // your e-stop switch to the Arduino reset pin, since it is the most correct way to do this.
+//
+// NOTE: A *real* E-stop switch should always be attached to the
+// power-source, not an input (of any sort) to any sort of processor.
+// E.G. What happens if your particular Step/Dir-input stepper-driver
+// happens to have a bug wherein if the step pulse is stuck on for longer
+// than a single pulse, then it starts stepping continuously? What happens,
+// then, if your AVR's failure isn't due to software, at all, but somehow
+// got "fried", wherein pressing the "reset" input does nothing to affect
+// the fact that there's a shorted-out diode driving your "step" input...?
+// (What if the reason you need to E-Stop is because a stepper-winding is
+//  over-powered and smoking?)
+// (What if you're driving a DC motor rather than a stepper?)
 #ifndef ENABLE_SOFTWARE_DEBOUNCE
-  ISR(LIMIT_INT_vect) // DEFAULT: Limit pin change interrupt process. 
+  //ISR(LIMIT_INT_vect) // DEFAULT: Limit pin change interrupt process. 
+  Limits_PinChangeInterruptHandler()
   {
+     //Some processors don't automatically clear the interrupt-flag
+     //So do-so here. (This will compile to Nada for others, e.g. AVR)
+     Limits_clearPinChangeFlag();
+
     // Ignore limit switches if already in an alarm state or in-process of executing an alarm.
     // When in the alarm state, Grbl should have been reset or will force a reset, so any pending 
     // moves in the planner and serial buffers are all cleared and newly sent blocks will be 
@@ -120,7 +156,19 @@ uint8_t limits_get_state()
   }  
 #else // OPTIONAL: Software debounce limit pin routine.
   // Upon limit pin change, enable watchdog timer to create a short delay. 
-  ISR(LIMIT_INT_vect) { if (!(WDTCSR & (1<<WDIE))) { WDTCSR |= (1<<WDIE); } }
+  //ISR(LIMIT_INT_vect) 
+  Limits_PinChangeInterruptHandler()
+  { 
+     //Some processors don't automatically clear the interrupt-flag
+     //So do-so here. (This will compile to Nada for others, e.g. AVR)
+     Limits_clearPinChangeFlag()
+     
+     if (!(WDTCSR & (1<<WDIE))) 
+     { 
+        WDTCSR |= (1<<WDIE); 
+     } 
+  }
+  
   ISR(WDT_vect) // Watchdog timer ISR
   {
     WDTCSR &= ~(1<<WDIE); // Disable watchdog timer. 
@@ -150,7 +198,7 @@ void limits_go_home(uint8_t cycle_mask)
 
   // Initialize
   uint8_t n_cycle = (2*N_HOMING_LOCATE_CYCLE+1);
-  uint8_t step_pin[N_AXIS];
+  gpioPortWidth_t step_pin[N_AXIS];
   float target[N_AXIS];
   float max_travel = 0.0;
   uint8_t idx;
@@ -172,7 +220,9 @@ void limits_go_home(uint8_t cycle_mask)
   bool approach = true;
   float homing_rate = settings.homing_seek_rate;
 
-  uint8_t limit_state, axislock, n_active_axis;
+  uint8_t limit_state; //, n_active_axis;
+  gpioPortWidth_t axislock;
+  uint8_t n_active_axis; //moved here for ByteIdentical test.
   do {
 
     system_convert_array_steps_to_mpos(target,sys.position);
@@ -282,9 +332,9 @@ void limits_go_home(uint8_t cycle_mask)
         set_axis_position = 0;
       #else 
         if ( bit_istrue(settings.homing_dir_mask,bit(idx)) ) {
-          set_axis_position = lround((settings.max_travel[idx]+settings.homing_pulloff)*settings.steps_per_mm[idx]);
+          set_axis_position = g_lround((settings.max_travel[idx]+settings.homing_pulloff)*settings.steps_per_mm[idx]);
         } else {
-          set_axis_position = lround(-settings.homing_pulloff*settings.steps_per_mm[idx]);
+          set_axis_position = g_lround(-settings.homing_pulloff*settings.steps_per_mm[idx]);
         }
       #endif
       
@@ -351,3 +401,4 @@ void limits_soft_check(float *target)
     }
   }
 }
+

@@ -124,8 +124,8 @@ uint8_t gc_execute_line(char *line)
     // a good enough comprimise and catch most all non-integer errors. To make it compliant, 
     // we would simply need to change the mantissa to int16, but this add compiled flash space.
     // Maybe update this later. 
-    int_value = trunc(value);
-    mantissa =  round(100*(value - int_value)); // Compute mantissa for Gxx.x commands.
+    int_value = g_trunc(value);
+    mantissa =  g_round(100*(value - int_value)); // Compute mantissa for Gxx.x commands.
         // NOTE: Rounding must be used to catch small floating point errors. 
 
     // Check if the g-code word is supported or errors due to modal group violations or has
@@ -338,7 +338,7 @@ uint8_t gc_execute_line(char *line)
           case 'J': word_bit = WORD_J; gc_block.values.ijk[Y_AXIS] = value; ijk_words |= (1<<Y_AXIS); break;
           case 'K': word_bit = WORD_K; gc_block.values.ijk[Z_AXIS] = value; ijk_words |= (1<<Z_AXIS); break;
           case 'L': word_bit = WORD_L; gc_block.values.l = int_value; break;
-          case 'N': word_bit = WORD_N; gc_block.values.n = trunc(value); break;
+          case 'N': word_bit = WORD_N; gc_block.values.n = g_trunc(value); break;
           case 'P': word_bit = WORD_P; gc_block.values.p = value; break;
           // NOTE: For certain commands, P value must be an integer, but none of these commands are supported.
           // case 'Q': // Not supported
@@ -540,7 +540,7 @@ uint8_t gc_execute_line(char *line)
       // [G10 L20 Errors]: P must be 0 to nCoordSys(max 9). Axis words missing.
       if (!axis_words) { FAIL(STATUS_GCODE_NO_AXIS_WORDS) }; // [No axis words]
       if (bit_isfalse(value_words,((1<<WORD_P)|(1<<WORD_L)))) { FAIL(STATUS_GCODE_VALUE_WORD_MISSING); } // [P/L word missing]
-      coord_select = trunc(gc_block.values.p); // Convert p value to int.
+      coord_select = g_trunc(gc_block.values.p); // Convert p value to int.
       if (coord_select > N_COORDINATE_SYSTEM) { FAIL(STATUS_GCODE_UNSUPPORTED_COORD_SYS); } // [Greater than N sys]
       if (gc_block.values.l != 20) {
         if (gc_block.values.l == 2) {

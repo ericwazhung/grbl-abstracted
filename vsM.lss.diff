@@ -1,0 +1,241 @@
+TODO: Check rcalls/rjmps, possibly ldi, that their values point to the same locations...?
+Making Files Comparable...
+ (not sure why this is such a slow process, it ran much faster without >>)
+... Done
+6c6
+<   0 .data         00000000  00800100  000070b4  00007148  2**0
+>   0 .data         00000000  00800100  000070aa  0000713e  2**0
+8c8
+<   1 .text         000070b4  00000000  00000000  00000094  2**1
+>   1 .text         000070aa  00000000  00000000  00000094  2**1
+10c10
+<   2 .bss          000005ce  00800100  00800100  00007148  2**0
+>   2 .bss          000005ce  00800100  00800100  0000713e  2**0
+12c12
+<   3 .comment      00000011  00000000  00000000  00007148  2**0
+>   3 .comment      00000011  00000000  00000000  0000713e  2**0
+81,83c81,84
+<       b2:	b5 22       	and	r11, r21
+<       b4:	bb 22       	and	r11, r27
+<       b6:	be 22       	and	r11, r30
+>       b2:	b0 22       	and	r11, r16
+>       b4:	b6 22       	and	r11, r22
+>       b6:	b9 22       	and	r11, r25
+>       b8:	bc 22       	and	r11, r28
+85,109c86,110
+<       ba:	c6 22       	and	r12, r22
+<       bc:	ce 22       	and	r12, r30
+<       be:	d8 22       	and	r13, r24
+<       c0:	44 23       	and	r20, r20
+<       c2:	44 23       	and	r20, r20
+<       c4:	44 23       	and	r20, r20
+<       c6:	e0 22       	and	r14, r16
+<       c8:	e3 22       	and	r14, r19
+<       ca:	ec 22       	and	r14, r28
+<       cc:	f5 22       	and	r15, r21
+<       ce:	44 23       	and	r20, r20
+<       d0:	44 23       	and	r20, r20
+<       d2:	44 23       	and	r20, r20
+<       d4:	44 23       	and	r20, r20
+<       d6:	44 23       	and	r20, r20
+<       d8:	44 23       	and	r20, r20
+<       da:	fd 22       	and	r15, r29
+<       dc:	07 23       	and	r16, r23
+<       de:	13 23       	and	r17, r19
+<       e0:	1b 23       	and	r17, r27
+<       e2:	1e 23       	and	r17, r30
+<       e4:	27 23       	and	r18, r23
+<       e6:	30 23       	and	r19, r16
+<       e8:	36 23       	and	r19, r22
+<       ea:	5a 2d       	mov	r21, r10
+>       bc:	c9 22       	and	r12, r25
+>       be:	d3 22       	and	r13, r19
+>       c0:	3f 23       	and	r19, r31
+>       c2:	3f 23       	and	r19, r31
+>       c4:	3f 23       	and	r19, r31
+>       c6:	db 22       	and	r13, r27
+>       c8:	de 22       	and	r13, r30
+>       ca:	e7 22       	and	r14, r23
+>       cc:	f0 22       	and	r15, r16
+>       ce:	3f 23       	and	r19, r31
+>       d0:	3f 23       	and	r19, r31
+>       d2:	3f 23       	and	r19, r31
+>       d4:	3f 23       	and	r19, r31
+>       d6:	3f 23       	and	r19, r31
+>       d8:	3f 23       	and	r19, r31
+>       da:	f8 22       	and	r15, r24
+>       dc:	02 23       	and	r16, r18
+>       de:	0e 23       	and	r16, r30
+>       e0:	16 23       	and	r17, r22
+>       e2:	19 23       	and	r17, r25
+>       e4:	22 23       	and	r18, r18
+>       e6:	2b 23       	and	r18, r27
+>       e8:	31 23       	and	r19, r17
+>       ea:	55 2d       	mov	r21, r5
+>       ec:	58 2d       	mov	r21, r8
+111,138c112,138
+<       ee:	62 2d       	mov	r22, r2
+<       f0:	65 2d       	mov	r22, r5
+<       f2:	68 2d       	mov	r22, r8
+<       f4:	6b 2d       	mov	r22, r11
+<       f6:	6e 2d       	mov	r22, r14
+<       f8:	71 2d       	mov	r23, r1
+<       fa:	74 2d       	mov	r23, r4
+<       fc:	77 2d       	mov	r23, r7
+<       fe:	7a 2d       	mov	r23, r10
+<      100:	86 2d       	mov	r24, r6
+<      102:	86 2d       	mov	r24, r6
+<      104:	86 2d       	mov	r24, r6
+<      106:	86 2d       	mov	r24, r6
+<      108:	86 2d       	mov	r24, r6
+<      10a:	86 2d       	mov	r24, r6
+<      10c:	86 2d       	mov	r24, r6
+<      10e:	86 2d       	mov	r24, r6
+<      110:	80 2d       	mov	r24, r0
+<      112:	7d 2d       	mov	r23, r13
+<      114:	83 2d       	mov	r24, r3
+<      116:	cd 2d       	mov	r28, r13
+<      118:	d0 2d       	mov	r29, r0
+<      11a:	d3 2d       	mov	r29, r3
+<      11c:	d6 2d       	mov	r29, r6
+<      11e:	d9 2d       	mov	r29, r9
+<      120:	dc 2d       	mov	r29, r12
+<      122:	df 2d       	mov	r29, r15
+<      124:	e2 2d       	mov	r30, r2
+>       f0:	60 2d       	mov	r22, r0
+>       f2:	63 2d       	mov	r22, r3
+>       f4:	66 2d       	mov	r22, r6
+>       f6:	69 2d       	mov	r22, r9
+>       f8:	6c 2d       	mov	r22, r12
+>       fa:	6f 2d       	mov	r22, r15
+>       fc:	72 2d       	mov	r23, r2
+>       fe:	75 2d       	mov	r23, r5
+>      100:	81 2d       	mov	r24, r1
+>      102:	81 2d       	mov	r24, r1
+>      104:	81 2d       	mov	r24, r1
+>      106:	81 2d       	mov	r24, r1
+>      108:	81 2d       	mov	r24, r1
+>      10a:	81 2d       	mov	r24, r1
+>      10c:	81 2d       	mov	r24, r1
+>      10e:	81 2d       	mov	r24, r1
+>      110:	7b 2d       	mov	r23, r11
+>      112:	78 2d       	mov	r23, r8
+>      114:	7e 2d       	mov	r23, r14
+>      116:	c8 2d       	mov	r28, r8
+>      118:	cb 2d       	mov	r28, r11
+>      11a:	ce 2d       	mov	r28, r14
+>      11c:	d1 2d       	mov	r29, r1
+>      11e:	d4 2d       	mov	r29, r4
+>      120:	d7 2d       	mov	r29, r7
+>      122:	da 2d       	mov	r29, r10
+>      124:	dd 2d       	mov	r29, r13
+6812c6812
+<     41d0:	f8 2e       	mov	r15, r24
+>     41d0:	18 2f       	mov	r17, r24
+6814c6814
+<     41d4:	c5 c0       	rjmp	.+394    	; 0x4360 <settings_restore+0x1ac>
+>     41d4:	c1 c0       	rjmp	.+386    	; 0x4358 <settings_restore+0x1a4>
+6869,6884c6869,6884
+<     427c:	00 e0       	ldi	r16, 0x00	; 0
+<     427e:	10 e0       	ldi	r17, 0x00	; 0
+<     4280:	20 e2       	ldi	r18, 0x20	; 32
+<     4282:	32 e4       	ldi	r19, 0x42	; 66
+<     4284:	00 93 80 06 	sts	0x0680, r16
+<     4288:	10 93 81 06 	sts	0x0681, r17
+<     428c:	20 93 82 06 	sts	0x0682, r18
+<     4290:	30 93 83 06 	sts	0x0683, r19
+<     4294:	00 93 84 06 	sts	0x0684, r16
+<     4298:	10 93 85 06 	sts	0x0685, r17
+<     429c:	20 93 86 06 	sts	0x0686, r18
+<     42a0:	30 93 87 06 	sts	0x0687, r19
+<     42a4:	00 93 88 06 	sts	0x0688, r16
+<     42a8:	10 93 89 06 	sts	0x0689, r17
+<     42ac:	20 93 8a 06 	sts	0x068A, r18
+<     42b0:	30 93 8b 06 	sts	0x068B, r19
+>     427c:	80 e0       	ldi	r24, 0x00	; 0
+>     427e:	90 e0       	ldi	r25, 0x00	; 0
+>     4280:	aa e7       	ldi	r26, 0x7A	; 122
+>     4282:	b3 e4       	ldi	r27, 0x43	; 67
+>     4284:	80 93 80 06 	sts	0x0680, r24
+>     4288:	90 93 81 06 	sts	0x0681, r25
+>     428c:	a0 93 82 06 	sts	0x0682, r26
+>     4290:	b0 93 83 06 	sts	0x0683, r27
+>     4294:	80 93 84 06 	sts	0x0684, r24
+>     4298:	90 93 85 06 	sts	0x0685, r25
+>     429c:	a0 93 86 06 	sts	0x0686, r26
+>     42a0:	b0 93 87 06 	sts	0x0687, r27
+>     42a4:	80 93 88 06 	sts	0x0688, r24
+>     42a8:	90 93 89 06 	sts	0x0689, r25
+>     42ac:	a0 93 8a 06 	sts	0x068A, r26
+>     42b0:	b0 93 8b 06 	sts	0x068B, r27
+6913,6932c6913,6928
+<     431c:	80 e0       	ldi	r24, 0x00	; 0
+<     431e:	90 e0       	ldi	r25, 0x00	; 0
+<     4320:	a8 ed       	ldi	r26, 0xD8	; 216
+<     4322:	b1 ec       	ldi	r27, 0xC1	; 193
+<     4324:	80 93 a4 06 	sts	0x06A4, r24
+<     4328:	90 93 a5 06 	sts	0x06A5, r25
+<     432c:	a0 93 a6 06 	sts	0x06A6, r26
+<     4330:	b0 93 a7 06 	sts	0x06A7, r27
+<     4334:	80 93 a8 06 	sts	0x06A8, r24
+<     4338:	90 93 a9 06 	sts	0x06A9, r25
+<     433c:	a0 93 aa 06 	sts	0x06AA, r26
+<     4340:	b0 93 ab 06 	sts	0x06AB, r27
+<     4344:	80 e0       	ldi	r24, 0x00	; 0
+<     4346:	90 e0       	ldi	r25, 0x00	; 0
+<     4348:	a8 e4       	ldi	r26, 0x48	; 72
+<     434a:	b3 ec       	ldi	r27, 0xC3	; 195
+<     434c:	80 93 ac 06 	sts	0x06AC, r24
+<     4350:	90 93 ad 06 	sts	0x06AD, r25
+<     4354:	a0 93 ae 06 	sts	0x06AE, r26
+<     4358:	b0 93 af 06 	sts	0x06AF, r27
+>     431c:	40 e0       	ldi	r20, 0x00	; 0
+>     431e:	50 e0       	ldi	r21, 0x00	; 0
+>     4320:	68 e4       	ldi	r22, 0x48	; 72
+>     4322:	73 ec       	ldi	r23, 0xC3	; 195
+>     4324:	40 93 a4 06 	sts	0x06A4, r20
+>     4328:	50 93 a5 06 	sts	0x06A5, r21
+>     432c:	60 93 a6 06 	sts	0x06A6, r22
+>     4330:	70 93 a7 06 	sts	0x06A7, r23
+>     4334:	40 93 a8 06 	sts	0x06A8, r20
+>     4338:	50 93 a9 06 	sts	0x06A9, r21
+>     433c:	60 93 aa 06 	sts	0x06AA, r22
+>     4340:	70 93 ab 06 	sts	0x06AB, r23
+>     4344:	40 93 ac 06 	sts	0x06AC, r20
+>     4348:	50 93 ad 06 	sts	0x06AD, r21
+>     434c:	60 93 ae 06 	sts	0x06AE, r22
+>     4350:	70 93 af 06 	sts	0x06AF, r23
+6934,6938c6930,6934
+<     4360:	f1 fe       	sbrs	r15, 1
+<     4362:	11 c0       	rjmp	.+34     	; 0x4386 <settings_restore+0x1d2>
+<     4364:	8e 01       	movw	r16, r28
+<     4366:	0f 5f       	subi	r16, 0xFF	; 255
+<     4368:	1f 4f       	sbci	r17, 0xFF	; 255
+>     4358:	11 ff       	sbrs	r17, 1
+>     435a:	10 c0       	rjmp	.+32     	; 0x437c <settings_restore+0x1c8>
+>     435c:	ce 01       	movw	r24, r28
+>     435e:	01 96       	adiw	r24, 0x01	; 1
+>     4360:	7c 01       	movw	r14, r24
+6940c6936
+<     436c:	f8 01       	movw	r30, r16
+>     4364:	f7 01       	movw	r30, r14
+6944,6946c6940,6942
+<     4374:	e1 2c       	mov	r14, r1
+<     4376:	b8 01       	movw	r22, r16
+<     4378:	8e 2d       	mov	r24, r14
+>     436c:	00 e0       	ldi	r16, 0x00	; 0
+>     436e:	b7 01       	movw	r22, r14
+>     4370:	80 2f       	mov	r24, r16
+6948,6952c6944,6947
+<     437e:	e3 94       	inc	r14
+<     4380:	f8 e0       	ldi	r31, 0x08	; 8
+<     4382:	ef 12       	cpse	r14, r31
+<     4384:	f8 cf       	rjmp	.-16     	; 0x4376 <settings_restore+0x1c2>
+<     4386:	f2 fe       	sbrs	r15, 2
+>     4376:	0f 5f       	subi	r16, 0xFF	; 255
+>     4378:	08 30       	cpi	r16, 0x08	; 8
+>     437a:	c9 f7       	brne	.-14     	; 0x436e <settings_restore+0x1ba>
+>     437c:	12 ff       	sbrs	r17, 2
+6962c6957
+<     439e:	f3 fe       	sbrs	r15, 3
+>     4394:	13 ff       	sbrs	r17, 3

@@ -30,13 +30,50 @@ int main(void)
 {
   // Initialize system upon power-up.
   serial_init();   // Setup serial baud rate and interrupts
+
+
+#ifndef __BYTE_IDENTICAL_TEST__
+ #ifndef __IGNORE_MEH_ERRORS__
+  #error "These two lines are a hack"
+ #endif
+  sei();
+#endif
+  //_mon_putc('<');
+  //It only works if this is added, here (not after)
+  //PLAUSIBLY:
+  // report_grbl_settings() in settings_init() WHEN THE EEPROM READ FAILS
+  // might be loading more than the serial buffer
+  // so stalling while waiting to clear, but never clears due to never
+  // sei()ing...
+  // (So, on AVR, is sei() default? NO)
+  // Could it be set elsewhere...?!
+  // Or is it that report_grbl_settings() is generally never called because
+  // reading of the EEPROM usually results in valid data.....?
+  
   settings_init(); // Load Grbl settings from EEPROM
+/* NOGO
+#ifndef __IGNORE_MEH_ERRORS__
+#error "These two lines are a hack"
+#endif
+  sei();
+  _mon_putc('^');
+*/
   stepper_init();  // Configure stepper pins and interrupt timers
   system_init();   // Configure pinout pins and pin-change interrupt
-  
+
+/* NOGO
+#ifndef __IGNORE_MEH_ERRORS__
+#error "These two lines are a hack"
+#endif
+  sei();
+  _mon_putc('^');
+*/
+
   memset(&sys, 0, sizeof(system_t));  // Clear all system variables
   sys.abort = true;   // Set abort to complete initialization
   sei(); // Enable interrupts
+
+  //_mon_putc('>');
 
   // Check for power-up and set system alarm if homing is enabled to force homing cycle
   // by setting Grbl's alarm state. Alarm locks out all g-code commands, including the

@@ -30,15 +30,87 @@
 #include "grbl.h" // For Arduino IDE compatibility.
 
 
-// Default settings. Used when resetting EEPROM. Change to desired name in defaults.h
-#define DEFAULTS_GENERIC
+#ifdef __BYTE_IDENTICAL_TEST__
+ // Default settings. Used when resetting EEPROM. Change to desired name in defaults.h
+ #define DEFAULTS_GENERIC
+#else
+ //Esot.Eric's test-rig
+ #warning "YOU'LL PROBABLY WANT TO CHANGE THIS TO DEFAULTS_GENERIC"
+ #define DEFAULTS_ESOT
+ //#define DEFAULTS_GENERIC
+#endif
+
+//Define STEPPER_INTERFACE below as one of these
+//Or leave it undefined, to get STEP/DIR outputs
+
+//output step/dir pins for most common stepper-drivers (grbl-default)
+#define STEPPER_INTERFACE__STEP_DIR    0
+//output separate phases (A and B) for direct-driving of a bipolar stepper
+//via H-bridges (Single-Stepping)
+#define STEPPER_INTERFACE__PHASE_AB    1
+//Do the same, but with PWM-based microstepping
+#define STEPPER_INTERFACE__PHASE_AB_PWM   2
+
+//Choose a "stepper" interface
+// grbl officially supports the Step/Dir interface used by many
+// stepper-driver circuits
+// Alternatively (new), one could use those same pins to directly-drive
+// H-bridges for each winding (phase) of a bipolar stepper motor
+// Future possibilities:
+//    microstepping via PWM on those same pins
+//    use a DC-motor with encoder...?
+// Available options are defined in stepper.h
+
+#ifdef __BYTE_IDENTICAL_TEST__
+ //This is the GRBL default:
+ #define STEPPER_INTERFACE  STEPPER_INTERFACE__STEP_DIR
+#else
+ //Select one, here...
+
+ //This is the GRBL default, uses two ouputs per stepper-driver, one output
+ //to indicate when to step, and another to indicate which direction
+// #define STEPPER_INTERFACE  STEPPER_INTERFACE__STEP_DIR
+
+ //This uses the so-called "STEP/DIRECTION" pins from the above (as-defined
+ //in cpu_map_xxx.h) as the actual Phase-Outputs for a bipolar stepper
+ //motor, in SINGLE-STEPPING mode, to be fed directly into H-Bridges.
+ //This should be able to run on any microcontroller without additional
+ //architecture-specific coding
+ //Though, it's not particularly efficiently-implemented
+// #define STEPPER_INTERFACE  STEPPER_INTERFACE__PHASE_AB
+
+ //This is similar to above, except implements microstepping, in a sense,
+ //by using PWM to create more sinusoidal transitions between each physical
+ //step. (intermediate "microsteps" can be stopped-at, but their actual
+ //positions may be somewhat unevenly dispersed between the full steps)
+ //THIS REQUIRES ARCHITECTURE-SPECIFIC CODE (which may not be available)
+ //AND requires 2 PWM channels per axis!
+ //(See also PHASE_AB_PWM__AXES_MASK)
+ #define STEPPER_INTERFACE  STEPPER_INTERFACE__PHASE_AB_PWM
+ 
+ //When using STEPPER_INTERFACE__PHASE_AB_PWM... also define this.
+ // This indicates which axes have PWM/microstepping as an option
+ // Those axes *not* in this mask will be handled with the same code as
+ // STEPPER_INTERFACE__PHASE_AB (NOT _PWM) using full-stepping
+ // (E.G. if you've only got 4 spare PWM outputs, and only doing a two-axis
+ // system anyhow, then you're set).
+ //TODO: This is highly dependent on the CPU_MAP/ARCHITECTURE (so maybe
+ //should be there, instead).
+ #define PHASE_AB_PWM__AXES_MASK ((1<<(X_AXIS)) | (1<<(Y_AXIS)))
+ //#define PHASE_AB_PWM__AXES_MASK ((1<<(Y_AXIS)))
+
+#endif
+
+
+
 
 // Serial baud rate
 #define BAUD_RATE 115200
 
 // Default cpu mappings. Grbl officially supports the Arduino Uno only. Other processor types
 // may exist from user-supplied templates or directly user-defined in cpu_map.h
-#define CPU_MAP_ATMEGA328P // Arduino Uno CPU
+//#define CPU_MAP_ATMEGA328P // Arduino Uno CPU
+//THIS HAS BEEN MOVED TO MAKEFILE.
 
 // Define realtime command special characters. These characters are 'picked-off' directly from the
 // serial read data stream and are not passed to the grbl line execution parser. Select characters
