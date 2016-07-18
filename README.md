@@ -5,9 +5,26 @@ architecture with relative-ease. The Makefile now supports multiple
 architectures, selectable via option (currently PIC32, and AVR).
 
 Also added direct support for single-stepping, or PWM-based Microstepping,
-     which can be fed directly into H-Bridges, rather than requiring
-     dedicated stepper-drivers with Step/Dir inputs. This is a
-     configuration-option.
+which can be fed directly into H-Bridges, rather than requiring
+dedicated stepper-drivers with Step/Dir inputs. This is a
+configuration-option.
+
+NOTE that this was *intentionally* designed such that the original compilation-
+options result in an identical build to the original. Such that the potential
+for new "bugs" (with the original settings) is *zero*, guaranteed by hex-file 
+comparison with the original build. (Why break a good thing?)
+Thus, despite the abstractions--hopefully making it easier to port to other 
+architectures--no speed-delays are introduced by e.g. new function-calls, 
+stack-pushing/popping, etc. You still get the benefits of a system highly-tuned 
+for limited resources.
+This carries-over some of the original grbl limitations, such as port-mapping 
+requirements, etc. And, yes, some of those high-tunings aimed at the original AVR 
+architecture may result in slightly less efficient-than-ideal code on other 
+architectures.
+
+See the "diff" to get an idea of the changes:
+https://github.com/ericwazhung/grbl-abstracted/commit/599e74c350cdc3abf4d6a35a0b17ff12686360d3
+
 
      THIS WILL CHANGE SOMEWHAT DRAMATICALLY if I ever get around to it... I
      don't like the naming-conventions I used for the new functions, and
@@ -17,7 +34,7 @@ Also added direct support for single-stepping, or PWM-based Microstepping,
      axes. (There weren't enough pins for Z).
 
 
-     THIS IS FUNCTIONAL BUT NOT what I'd consider "public-ready"
+     THIS IS FUNCTIONAL BUT NOT what *I*'d consider "public-ready"
      It's made-available, here and now, because who knows how long
      "public-ready" will be (if).
 ***
